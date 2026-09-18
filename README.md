@@ -45,6 +45,46 @@ docker build -f docker/Dockerfile -t local/llama.cpp-gfx906:expert-pool .
 The image records the source commit and a source-tree digest in `/etc/llama.cpp-provenance`, so a
 built image can be tied back to an exact tree.
 
+## Build and run (gfx1201 / ROCm)
+
+Build natively against host ROCm, no Docker image. `HSA_OVERRIDE_GFX_VERSION` is not needed, gfx1201
+is native in ROCm 10:
+
+```sh
+cmake -B build -DGGML_HIP=ON -DGPU_TARGETS=gfx1201
+cmake --build build -j"$(nproc)"
+```
+
+The built `build/bin/libggml-hip.so` carries a gfx1201 code object. If the ROCm libraries are not in
+the loader cache, start the server with `LD_LIBRARY_PATH=/opt/rocm/lib`, otherwise it exits with
+`libhipblas.so.3: cannot open shared object file`.
+
+`scripts/run-gfx1201-example.sh` is the native counterpart of `scripts/run-example.sh`.
+
+### Pool sizing on a 16 GB card with another model
+
+The gfx906 numbers above do not transfer to a different model. Measured with
+`Qwen3.8-Flash-Next-Uncensored-IQ4_XS` at 128K, Q8_0 K/V, `--n-cpu-moe 48`:
+
+- One slot is 128 MiB (8,434,851,840 B for 66 slots) against 76.5 MiB on the validated model, so the
+  gfx906 value of 66 slots needs about 2.9 GiB more VRAM here.
+- 66 slots left about 3.08 GiB free and context creation failed with
+  `allocating 3952.28 MiB on device 0: cudaMalloc failed: out of memory`. That request is the pp
+  compute buffer, inflated by `-ub 2048`. The rail reserves that space, so ubatch 2048 needs a rail
+  larger than 2048 MiB.
+- Planner ledger from that run: `ceiling=14,948,499,456` (card total minus rail 2048 MiB) and
+  `cap=9,596,764,160`, so 5.35 GB of weights were already on the device before the pool was sized.
+
+Start at 40 slots (about 5.0 GiB) with `-ub 512`, and raise it only while
+`rocm-smi --showmeminfo vram` shows headroom. Run once with `EXPERT_CACHE=0` to measure the non-pool
+footprint before choosing a value.
+
+This model uses hybrid attention (`full_attention_interval=4` plus per-layer compress ratios), so its
+128K KV cache is much smaller than a full 48-layer cache. Measure it instead of estimating it.
+
+Status: build and pool admission are verified on gfx1201; a full end-to-end 128K run is not yet
+confirmed on that card.
+
 ## Usage
 
 ```sh
