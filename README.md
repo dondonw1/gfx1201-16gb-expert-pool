@@ -59,7 +59,9 @@ The built `build/bin/libggml-hip.so` carries a gfx1201 code object. If the ROCm 
 the loader cache, start the server with `LD_LIBRARY_PATH=/opt/rocm/lib`, otherwise it exits with
 `libhipblas.so.3: cannot open shared object file`.
 
-`scripts/run-gfx1201-example.sh` is the native counterpart of `scripts/run-example.sh`.
+`scripts/00-update-and-build.sh` fetches the remotes, fast-forwards the branch and rebuilds with the
+flags above. `scripts/01-qwen-flash-131k-gfx1201-launch-script.sh` is the native counterpart of
+`scripts/run-example.sh`.
 
 ### Pool sizing on a 16 GB card with another model
 
